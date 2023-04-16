@@ -1,0 +1,114 @@
+---
+title: "Course 8 Project"
+author: "Andrew J Fox"
+date: "2023-04-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+## Load packages
+library(caret); library(dplyr); library(randomForest); library(rattle)
+```
+
+## Getting Data
+
+```{r message=FALSE, warning=FALSE}
+### Download data
+## Create directory
+if (!file.exists("./data")){dir.create("./data")}
+
+# Download train data
+trainURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+trainPATH <- "./data/trainset"
+download.file(trainURL, destfile=trainPATH, method="curl")
+trainset <- read.csv(trainPATH, na.strings=c("NA", "#DIV/0!", ""))
+
+# Download test data
+testURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+testPATH <- "./data/testset"
+download.file(testURL, destfile=testPATH, method="curl")
+testset <- read.csv(testPATH, na.strings=c("NA", "#DIV/0!", ""))
+```
+
+# Preprocessing Data
+
+```{r}
+## Remove any columns with NA? might want to impute w/ knn
+trainset <- trainset[ , colSums(is.na(trainset)) == 0]
+testset <- testset[ , colSums(is.na(testset)) == 0]
+
+## Select for only relevant variables. vars 1:7 are useless
+trainset <- select(trainset, -c(1:7))
+testset <- select(testset, -c(1:7))
+```
+
+```{r}
+## Make classe a factor
+trainset$classe <- factor(trainset$classe)
+```
+
+If any variable have near zero variance, we can combine them into one.
+
+```{r}
+## Find any near zero variance variables
+trainNZV <- nearZeroVar(trainset, saveMetrics=T)
+TRUE %in% trainNZV$nzv
+```
+
+There appears to be no variables with near zero variance.
+
+# Outline
+
+The `classe` variable in the training dataset corresponds to the fashion in which participants performed the dumbbell exercise. `classe=A` is the proper fashion, while `classe=B-E` are common mistakes. I will build several prediction models that attempt to predict the fashion in which the exercise was performed.
+
+Potential cavets with dataset: Only male participants. Only 6 participants, small data size.
+
+## Cross-Validation
+
+I will build and evaluate the models with cross-validation. The original training set is split into 70% training set and 30% test set. Each model will be evaluated with this cross-validation test set. The final model will be evaluated with the original test set.
+
+```{r}
+## Split trainset into train and test set for cross-validation
+inTrain <- createDataPartition(y=trainset$classe, p=0.7, list=F)
+cvTrain <- trainset[inTrain, ]
+cvTest <- trainset[-inTrain, ]
+```
+
+# Prediction Models
+
+## Model 1 - Rpart Tree
+
+```{r}
+## Build model with rpart trees
+model1 <- train(classe ~ ., data=cvTrain, method="rpart")
+
+## Prediction
+pred1 <- predict(model1, newdata=cvTest)
+
+## Plot tree
+fancyRpartPlot(model1$finalModel)
+
+## Evaluate model with confusion matrix
+confusionMatrix(pred1, factor(cvTest$classe))
+```
+
+The accuracy for this model is 55%, which is terrible.
+
+## Model 2 - Random Forest
+
+```{r}
+## Build model with random forest
+model2 <- randomForest(classe ~ ., data=cvTrain)
+
+## Prediction
+pred2 <- predict(model2, cvTest)
+
+## Evaluate model with confusion matrix
+confusionMatrix(pred2, factor(cvTest$classe))
+```
+
+This model does much better for accuracy with 99%, which is a good enough model to use as our final model.
